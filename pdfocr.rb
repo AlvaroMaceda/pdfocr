@@ -22,6 +22,7 @@
 
 require 'optparse'
 require 'tmpdir'
+require 'fileutils'
 
 def shell_escape(str)
   "'" + str.gsub("'", "'\\''") + "'"
@@ -50,21 +51,6 @@ def writef(filename, text)
   File.open(filename, 'w') do |f|
     f.puts(text)
   end
-end
-
-def rmdir(dirname)
-  Dir.foreach(dirname) do |filename|
-    next if filename.in?(['.', '..'])
-
-    filename = File.expand_path("#{dirname}/#{filename}")
-    if File.directory?(filename)
-      rmdir(filename)
-    else
-      File.delete(filename)
-    end
-  end
-
-  Dir.delete(dirname)
 end
 
 app_name = 'pdfocr'
@@ -398,5 +384,5 @@ sh 'pdftk', "#{tmp}/merged.pdf", 'update_info', "#{tmp}/pdfinfo.txt", 'output', 
 
 if delete_files
   puts 'Cleaning up temporary files'
-  rmdir(tmp)
+  FileUtils.rm_rf(tmp)
 end
