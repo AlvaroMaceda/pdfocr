@@ -53,130 +53,199 @@ def writef(filename, text)
   end
 end
 
+class Configuration
+
+  attr_accessor :opts
+  attr_accessor :show_version, :show_help
+  attr_accessor :infile, :outfile, :run_unpaper
+  attr_accessor :use_tesseract, :use_cuneiform, :use_ocropus
+  attr_accessor :language, :check_lang
+  attr_accessor :delete_dir, :delete_files, :tmp
+  attr_accessor :use_ppm, :use_png
+
+  def initialize
+    @infile = nil
+    @outfile = nil
+    @delete_dir = true
+    @delete_files = true
+    @language = 'eng'
+    @check_lang = false
+    @tmp = nil
+    @use_ocropus = false
+    @use_cuneiform = false
+    @use_tesseract = false
+    @run_unpaper = false
+
+    @use_ppm = true
+    @use_png = false
+
+    @show_version = false
+    @show_help = false
+  end
+
+end
+
+class OptionParser
+
+  def self.options
+    @@options
+  end
+
+  def self.configuration
+    @@configuration
+  end
+
+  def self.prepare(app_name)
+    @@configuration = Configuration.new
+
+    @@options = OptionParser.new do |opts|
+
+      opts.banner = <<~USAGE
+        Usage: #{app_name} -i input.pdf -o output.pdf
+        #{app_name} adds text to PDF files using the ocropus, cuneiform, or tesseract OCR software
+      USAGE
+    
+      opts.on('-i', '--input [FILE]', 'Specify input PDF file') do |fn|
+        @@configuration.infile = fn
+      end
+    
+      opts.on('-o', '--output [FILE]', 'Specify output PDF file') do |fn|
+        @@configuration.outfile = fn
+      end
+    
+      opts.on('-u', '--unpaper', 'Run unpaper on each page before OCR.') do
+        @@configuration.run_unpaper = true
+      end
+    
+      opts.on('-t', '--tesseract', 'Use tesseract as the OCR engine (default)') do
+        @@configuration.use_tesseract = true
+      end
+    
+      opts.on('-c', '--cuneiform', 'Use cuneiform as the OCR engine') do
+        @@configuration.use_cuneiform = true
+      end
+    
+      opts.on('-p', '--ocropus', 'Use ocropus as the OCR engine') do
+        @@configuration.use_ocropus = true
+      end
+    
+      opts.on('-l', '--lang [LANG]', 'Specify language for the OCR software') do |fn|
+        @@configuration.language = fn
+        @@configuration.check_lang = true
+      end
+    
+      opts.on('-L', '--nocheck-lang LANG', 'Suppress checking of language parameter') do |fn|
+        @@configuration.language = fn
+        @@configuration.check_lang = false
+      end
+    
+      opts.on('-w', '--workingdir [DIR]', 'Specify directory to store temp files in') do |fn|
+        @@configuration.delete_dir = false
+        @@configuration.tmp = fn
+      end
+    
+      opts.on('-k', '--keep', 'Keep temporary files around') do
+        @@configuration.delete_files = false
+      end
+    
+      opts.on_tail('-h', '--help', 'Show this message') do
+        @@configuration.show_help = true
+      end
+    
+      opts.on_tail('-v', '--version', 'Show version') do
+        @@configuration.show_version = true   
+      end
+    end    
+
+    return self
+
+  end
+
+  def self.parse(arguments)
+    @@options.parse!(arguments)
+    return @@configuration
+  end
+end
+
+
+def validate_infile(infile)
+
+  if !infile || infile == ''
+    puts OptionParser.options
+    puts
+    puts 'Need to specify an input PDF file'
+    return false
+  end
+  
+  if infile[-3..-1].casecmp('pdf') != 0
+    puts "Input PDF file #{infile} should have a PDF extension"
+    return false
+  end
+  
+  unless File.file?(infile)
+    puts "Input file #{infile} does not exist"
+    return false
+  end
+
+  return true
+
+end
+
+def validate_outfile(outfile)
+
+  # We don't need to validate outfile != infile because 
+  # we validate here that outfile does not exists
+  # and we are validating that infile exists
+
+  if !outfile || outfile == ''
+    puts OptionParser.options
+    puts
+    puts 'Need to specify an output PDF file'
+    exit
+  end
+  
+  if outfile[-3..-1].casecmp('pdf') != 0
+    puts 'Output PDF file should have a PDF extension'
+    exit
+  end
+
+  if File.file?(outfile)
+    puts "Output file #{outfile} already exists"
+    exit
+  end
+
+end
+
+
 app_name = 'pdfocr'
 version = [0, 1, 4]
-infile = nil
-outfile = nil
-delete_dir = true
-delete_files = true
-language = 'eng'
-check_lang = false
-tmp = nil
-use_ocropus = false
-use_cuneiform = false
-use_tesseract = false
-run_unpaper = false
 
-optparse = OptionParser.new do |opts|
-  opts.banner = <<~USAGE
-    Usage: #{app_name} -i input.pdf -o output.pdf
-    #{app_name} adds text to PDF files using the ocropus, cuneiform, or tesseract OCR software
-  USAGE
+config = OptionParser.prepare(app_name).parse(ARGV)
 
-  opts.on('-i', '--input [FILE]', 'Specify input PDF file') do |fn|
-    infile = fn
-  end
+delete_dir = config.delete_dir
+delete_files = config.delete_files
+language = config.language
+check_lang = config.check_lang
+tmp = config.tmp
+use_ocropus = config.use_ocropus
+use_cuneiform = config.use_cuneiform
+use_tesseract = config.use_tesseract
+run_unpaper = config.run_unpaper
 
-  opts.on('-o', '--output [FILE]', 'Specify output PDF file') do |fn|
-    outfile = fn
-  end
-
-  opts.on('-u', '--unpaper', 'Run unpaper on each page before OCR.') do
-    run_unpaper = true
-  end
-
-  opts.on('-t', '--tesseract', 'Use tesseract as the OCR engine (default)') do
-    use_tesseract = true
-  end
-
-  opts.on('-c', '--cuneiform', 'Use cuneiform as the OCR engine') do
-    use_cuneiform = true
-  end
-
-  opts.on('-p', '--ocropus', 'Use ocropus as the OCR engine') do
-    use_ocropus = true
-  end
-
-  opts.on('-l', '--lang [LANG]', 'Specify language for the OCR software') do |fn|
-    language = fn
-    check_lang = true
-  end
-
-  opts.on('-L', '--nocheck-lang LANG', 'Suppress checking of language parameter') do |fn|
-    language = fn
-    check_lang = false
-  end
-
-  opts.on('-w', '--workingdir [DIR]', 'Specify directory to store temp files in') do |fn|
-    delete_dir = false
-    tmp = fn
-  end
-
-  opts.on('-k', '--keep', 'Keep temporary files around') do
-    delete_files = false
-  end
-
-  opts.on_tail('-h', '--help', 'Show this message') do
-    puts opts
-    exit
-  end
-
-  opts.on_tail('-v', '--version', 'Show version') do
-    puts version.join('.')
-    exit
-  end
-end
-
-optparse.parse!(ARGV)
-
-if !infile || infile == ''
-  puts optparse
-  puts
-  puts 'Need to specify an input PDF file'
+if config.show_help
+  puts OptionParser.options
   exit
 end
 
-if infile[-3..-1].casecmp('pdf') != 0
-  puts "Input PDF file #{infile} should have a PDF extension"
-  exit
+if config.show_version
+  puts version.join('.')
+  exit    
 end
 
-# baseinfile = infile[0..-5]
+exit unless validate_infile(config.infile)
+infile = File.expand_path(config.infile)
 
-# if not baseinfile or baseinfile == ''
-#   puts "Input file #{infile} needs to have a name, not just an extension"
-#   exit
-# end
-
-unless File.file?(infile)
-  puts "Input file #{infile} does not exist"
-  exit
-end
-
-infile = File.expand_path(infile)
-
-if !outfile || outfile == ''
-  puts optparse
-  puts
-  puts 'Need to specify an output PDF file'
-  exit
-end
-
-if outfile[-3..-1].casecmp('pdf') != 0
-  puts 'Output PDF file should have a PDF extension'
-  exit
-end
-
-if outfile == infile
-  puts 'Output PDF file should not be the same as the input PDF file'
-  exit
-end
-
-if File.file?(outfile)
-  puts "Output file #{outfile} already exists"
-  exit
-end
-
+exit unless validate_outfile(config.outfile)
 outfile = File.expand_path(outfile)
 
 if !language || language == ''
@@ -324,29 +393,44 @@ Dir.chdir("#{tmp}/") do
       puts "Error while extracting page #{i}"
       next
     end
-    puts "Converting page #{i} to ppm"
+    
+    if config.use_ppm
+      puts "Converting page #{i} to ppm"
+      image_extension = "ppm"
 
-    sh "pdftoppm -r 300 #{shell_escape(basefn)}.pdf >#{shell_escape(basefn)}.ppm"
-    unless File.file?("#{basefn}.ppm")
-      puts "Error while converting page #{i} to ppm"
-      next
+      sh "pdftoppm -r 300 #{shell_escape(basefn)}.pdf >#{shell_escape(basefn)}.ppm"
+      unless File.file?("#{basefn}.ppm")
+        puts "Error while converting page #{i} to ppm"
+        next
+      end      
     end
 
+    if config.use_png
+      puts "Converting page #{i} to png"
+      image_extension = "png"
+
+      sh "convert -density 360 #{shell_escape(basefn)}.pdf -quality 35 #{shell_escape(basefn)}.png"
+      if not File.file?(basefn+'.png')
+        puts "Error while converting page #{i} to png"
+        next
+      end
+    end
+    
     if run_unpaper
       puts "Running unpaper on page #{i}"
-      sh 'unpaper', "#{basefn}.ppm", "#{basefn}_unpaper.ppm"
-      unless File.file?("#{basefn}_unpaper.ppm")
+      sh 'unpaper', "#{basefn}." + image_extension, "#{basefn}_unpaper." + image_extension
+      unless File.file?("#{basefn}_unpaper." + image_extension)
         puts "Error while running unpaper on page #{i}"
         next
       end
-      sh 'mv', "#{basefn}_unpaper.ppm", "#{basefn}.ppm"
+      sh 'mv', "#{basefn}_unpaper." + image_extension, "#{basefn}." + image_extension
     end
 
     puts "Running OCR on page #{i}"
     if use_cuneiform
-      sh 'cuneiform', '-l', language, '-f', 'hocr', '-o', "#{basefn}.hocr", "#{basefn}.ppm"
+      sh 'cuneiform', '-l', language, '-f', 'hocr', '-o', "#{basefn}.hocr", "#{basefn}." + image_extension
     elsif use_tesseract
-      sh 'tesseract', '-l', language, "#{basefn}.ppm", "#{basefn}-new", 'pdf'
+      sh 'tesseract', '-l', language, "#{basefn}." + image_extension, "#{basefn}-new", 'pdf'
       unless File.file?("#{basefn}-new.pdf")
         puts "Error while running OCR on page #{i}"
         sh 'mv', "#{basefn}.pdf", "#{basefn}-new.pdf"
@@ -355,10 +439,11 @@ Dir.chdir("#{tmp}/") do
       sh "pdftk #{tmp + '/' + '*-new.pdf'} cat output #{tmp + '/merged.ocrpdf'}"
       sh "rm -f #{tmp + '/' + '*-new.pdf'}"
       sh "rm -f #{tmp + '/' + '*.ppm'}"
+      sh "rm -f #{tmp + '/' + '*.png'}"
       sh "rm -f #{tmp + '/' + '*.pdf'}"
       sh "mv #{tmp + '/merged.ocrpdf'} #{tmp + '/0000000000000-merged-new.pdf'}"
     else
-      sh "ocroscript recognize #{shell_escape(basefn)}.ppm > #{shell_escape(basefn)}.hocr"
+      sh "ocroscript recognize #{shell_escape(basefn)}."+image_extension + " > #{shell_escape(basefn)}.hocr"
     end
 
     next if use_tesseract
