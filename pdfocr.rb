@@ -168,7 +168,7 @@ class OptionParser
 end
 
 
-def validate_infile(infile)
+def valide_infile?(infile)
 
   if !infile || infile == ''
     puts OptionParser.options
@@ -191,7 +191,7 @@ def validate_infile(infile)
 
 end
 
-def validate_outfile(outfile)
+def valid_outfile?(outfile)
 
   # We don't need to validate outfile != infile because 
   # we validate here that outfile does not exists
@@ -216,96 +216,127 @@ def validate_outfile(outfile)
 
 end
 
+def valid_parameters?(params)
+
+  return false unless valid_infile?(params.infile)
+  return false unless valid_outfile?(params.outfile)
+
+  if !params.language || params.language == ''
+    puts 'Need to specify a language'
+    return false
+  end
+  
+  if `which pdftk` == ''
+    puts 'pdftk command is missing. Install the pdftk package'
+    return false
+  end
+  
+  if `which pdftoppm` == ''
+    puts 'pdftoppm command is missing. Install the poppler-utils package'
+    return false
+  end
+
+  if `which hocr2pdf` == ''
+    puts 'hocr2pdf command is missing. Install the exactimage package'
+    return false
+  end
+  
+  if params.use_ocropus
+    if `which ocroscript` == ''
+      puts 'The ocroscript command is missing. Install the ocropus package.'
+      return false
+    end
+  elsif params.use_cuneiform
+    if `which cuneiform` == ''
+      puts 'The cuneiform command is missing. Install the cuneiform package.'
+      return false
+    end
+  elsif params.use_tesseract
+    if `which tesseract` == ''
+      puts 'The tesseract command is missing. Install the tesseract-ocr package and the'
+      puts 'language packages you need, e.g. tesseract-ocr-deu, tesseract-ocr-deu-frak,'
+      puts 'or tesseract-ocr-eng.'
+      return false
+    end
+  else
+    if `which tesseract` != ''
+      params.use_tesseract = true
+    elsif `which cuneiform` != ''
+      params.use_cuneiform = true
+    elsif `which ocroscript` != ''
+      params.use_ocropus = true
+    else
+      puts 'The tesseract command is missing. Install the tesseract-ocr package and the'
+      puts 'language packages you need, e.g. tesseract-ocr-deu, tesseract-ocr-deu-frak,'
+      puts 'or tesseract-ocr-eng.'
+      exit
+    end
+  end
+
+  if config.run_unpaper
+    if `which unpaper` == ''
+      puts 'The unpaper command is missing. Install the unpaper package.'
+      return false
+    end
+  end
+
+  if params.check_lang
+    langlist = []
+    if params.use_cuneiform
+      begin
+        langlist = `cuneiform -l`.split("\n")[-1].split(':')[-1].delete('.').split(' ')
+      rescue
+        puts 'Unable to list supported languages from cuneiform'
+      end
+    end
+    if params.use_tesseract
+      begin
+        langlist = `tesseract --list-langs 2>&1`.split("\n")[1..-1]
+      rescue
+        puts 'Unable to list supported languages from tesseract'
+      end
+    end
+    if langlist && !langlist.empty?
+      unless langlist.include?(params.language)
+        puts "Language #{params.language} is not supported or not installed. Please choose from"
+        puts langlist.join(' ')
+        return false
+      end
+    end
+  end
+
+  return true
+
+end
+
 
 app_name = 'pdfocr'
 version = [0, 1, 4]
 
-config = OptionParser.prepare(app_name).parse(ARGV)
+params = OptionParser.prepare(app_name).parse(ARGV)
+exit unless valid_parameters?(params)
 
-delete_dir = config.delete_dir
-delete_files = config.delete_files
-language = config.language
-check_lang = config.check_lang
-tmp = config.tmp
-use_ocropus = config.use_ocropus
-use_cuneiform = config.use_cuneiform
-use_tesseract = config.use_tesseract
-run_unpaper = config.run_unpaper
+delete_dir = params.delete_dir
+delete_files = params.delete_files
+check_lang = params.check_lang
+tmp = params.tmp
+use_ocropus = params.use_ocropus
+use_cuneiform = params.use_cuneiform
+use_tesseract = params.use_tesseract
+run_unpaper = params.run_unpaper
 
-if config.show_help
+if params.show_help
   puts OptionParser.options
   exit
 end
 
-if config.show_version
+if params.show_version
   puts version.join('.')
   exit    
 end
 
-exit unless validate_infile(config.infile)
-infile = File.expand_path(config.infile)
-
-exit unless validate_outfile(config.outfile)
-outfile = File.expand_path(outfile)
-
-if !language || language == ''
-  puts 'Need to specify a language'
-  exit
-end
-
-if `which pdftk` == ''
-  puts 'pdftk command is missing. Install the pdftk package'
-  exit
-end
-
-if `which pdftoppm` == ''
-  puts 'pdftoppm command is missing. Install the poppler-utils package'
-  exit
-end
-
-if use_ocropus
-  if `which ocroscript` == ''
-    puts 'The ocroscript command is missing. Install the ocropus package.'
-    exit
-  end
-elsif use_cuneiform
-  if `which cuneiform` == ''
-    puts 'The cuneiform command is missing. Install the cuneiform package.'
-    exit
-  end
-elsif use_tesseract
-  if `which tesseract` == ''
-    puts 'The tesseract command is missing. Install the tesseract-ocr package and the'
-    puts 'language packages you need, e.g. tesseract-ocr-deu, tesseract-ocr-deu-frak,'
-    puts 'or tesseract-ocr-eng.'
-    exit
-  end
-else
-  if `which tesseract` != ''
-    use_tesseract = true
-  elsif `which cuneiform` != ''
-    use_cuneiform = true
-  elsif `which ocroscript` != ''
-    use_ocropus = true
-  else
-    puts 'The tesseract command is missing. Install the tesseract-ocr package and the'
-    puts 'language packages you need, e.g. tesseract-ocr-deu, tesseract-ocr-deu-frak,'
-    puts 'or tesseract-ocr-eng.'
-    exit
-  end
-end
-
-if `which hocr2pdf` == ''
-  puts 'hocr2pdf command is missing. Install the exactimage package'
-  exit
-end
-
-if run_unpaper
-  if `which unpaper` == ''
-    puts 'The unpaper command is missing. Install the unpaper package.'
-    exit
-  end
-end
+infile = File.expand_path(params.infile)
+outfile = File.expand_path(params.outfile)
 
 if delete_dir
   tmp = Dir.mktmpdir
@@ -322,37 +353,13 @@ else
   exit
 end
 
-if check_lang
-  langlist = []
-  if use_cuneiform
-    begin
-      langlist = `cuneiform -l`.split("\n")[-1].split(':')[-1].delete('.').split(' ')
-    rescue
-      puts 'Unable to list supported languages from cuneiform'
-    end
-  end
-  if use_tesseract
-    begin
-      langlist = `tesseract --list-langs 2>&1`.split("\n")[1..-1]
-    rescue
-      puts 'Unable to list supported languages from tesseract'
-    end
-  end
-  if langlist && !langlist.empty?
-    unless langlist.include?(language)
-      puts "Language #{language} is not supported or not installed. Please choose from"
-      puts langlist.join(' ')
-      exit
-    end
-  end
-end
+
 
 puts "Input file is #{infile}"
 puts "Output file is #{outfile}"
 puts "Using working dir #{tmp}"
 
 puts 'Getting info from PDF file'
-
 puts
 
 pdfinfo = sh 'pdftk', infile, 'dump_data'
@@ -394,7 +401,7 @@ Dir.chdir("#{tmp}/") do
       next
     end
     
-    if config.use_ppm
+    if params.use_ppm
       puts "Converting page #{i} to ppm"
       image_extension = "ppm"
 
@@ -405,7 +412,7 @@ Dir.chdir("#{tmp}/") do
       end      
     end
 
-    if config.use_png
+    if params.use_png
       puts "Converting page #{i} to png"
       image_extension = "png"
 
@@ -416,7 +423,7 @@ Dir.chdir("#{tmp}/") do
       end
     end
     
-    if run_unpaper
+    if params.run_unpaper
       puts "Running unpaper on page #{i}"
       sh 'unpaper', "#{basefn}." + image_extension, "#{basefn}_unpaper." + image_extension
       unless File.file?("#{basefn}_unpaper." + image_extension)
@@ -428,9 +435,9 @@ Dir.chdir("#{tmp}/") do
 
     puts "Running OCR on page #{i}"
     if use_cuneiform
-      sh 'cuneiform', '-l', language, '-f', 'hocr', '-o', "#{basefn}.hocr", "#{basefn}." + image_extension
+      sh 'cuneiform', '-l', params.language, '-f', 'hocr', '-o', "#{basefn}.hocr", "#{basefn}." + image_extension
     elsif use_tesseract
-      sh 'tesseract', '-l', language, "#{basefn}." + image_extension, "#{basefn}-new", 'pdf'
+      sh 'tesseract', '-l', params.language, "#{basefn}." + image_extension, "#{basefn}-new", 'pdf'
       unless File.file?("#{basefn}-new.pdf")
         puts "Error while running OCR on page #{i}"
         sh 'mv', "#{basefn}.pdf", "#{basefn}-new.pdf"
