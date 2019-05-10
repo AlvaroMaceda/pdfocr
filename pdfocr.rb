@@ -259,6 +259,7 @@ def valid_parameters?(params)
       return false
     end
   else
+    # This is not a validation, it should be removed from here
     if `which tesseract` != ''
       params.use_tesseract = true
     elsif `which cuneiform` != ''
@@ -273,7 +274,7 @@ def valid_parameters?(params)
     end
   end
 
-  if config.run_unpaper
+  if params.run_unpaper
     if `which unpaper` == ''
       puts 'The unpaper command is missing. Install the unpaper package.'
       return false
@@ -316,14 +317,7 @@ version = [0, 1, 4]
 params = OptionParser.prepare(app_name).parse(ARGV)
 exit unless valid_parameters?(params)
 
-delete_dir = params.delete_dir
-delete_files = params.delete_files
-check_lang = params.check_lang
 tmp = params.tmp
-use_ocropus = params.use_ocropus
-use_cuneiform = params.use_cuneiform
-use_tesseract = params.use_tesseract
-run_unpaper = params.run_unpaper
 
 if params.show_help
   puts OptionParser.options
@@ -338,7 +332,7 @@ end
 infile = File.expand_path(params.infile)
 outfile = File.expand_path(params.outfile)
 
-if delete_dir
+if params.delete_dir
   tmp = Dir.mktmpdir
 elsif File.directory?(tmp)
   tmp = "#{File.expand_path(tmp)}/pdfocr"
@@ -434,9 +428,9 @@ Dir.chdir("#{tmp}/") do
     end
 
     puts "Running OCR on page #{i}"
-    if use_cuneiform
+    if params.use_cuneiform
       sh 'cuneiform', '-l', params.language, '-f', 'hocr', '-o', "#{basefn}.hocr", "#{basefn}." + image_extension
-    elsif use_tesseract
+    elsif params.use_tesseract
       sh 'tesseract', '-l', params.language, "#{basefn}." + image_extension, "#{basefn}-new", 'pdf'
       unless File.file?("#{basefn}-new.pdf")
         puts "Error while running OCR on page #{i}"
@@ -453,7 +447,7 @@ Dir.chdir("#{tmp}/") do
       sh "ocroscript recognize #{shell_escape(basefn)}."+image_extension + " > #{shell_escape(basefn)}.hocr"
     end
 
-    next if use_tesseract
+    next if params.use_tesseract
 
     unless File.file?("#{basefn}-new.pdf")
       puts "Error while running OCR on page #{i}"
@@ -462,7 +456,7 @@ Dir.chdir("#{tmp}/") do
   end
 end
 
-if use_tesseract
+if params.use_tesseract
   puts 'renaming merged-new.pdf to merged.pdf'
   sh 'mv', "#{tmp}/0000000000000-merged-new.pdf", "#{tmp}/merged.pdf"
 else
@@ -474,7 +468,7 @@ puts "Updating PDF info for #{outfile}"
 
 sh 'pdftk', "#{tmp}/merged.pdf", 'update_info', "#{tmp}/pdfinfo.txt", 'output', outfile
 
-if delete_files
+if params.delete_files
   puts 'Cleaning up temporary files'
   FileUtils.rm_rf(tmp)
 end
